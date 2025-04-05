@@ -6,6 +6,11 @@ from sklearn.feature_selection import RFE
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 from sklearn.model_selection import learning_curve
+import seaborn as sns
+
+
+
+# Preprocessors 
 
 
 
@@ -138,14 +143,7 @@ class ExtensiveFeatureSelectionPreprocessor(BaseEstimator, TransformerMixin):
 
 
 
-def check_columns(df):
-    cat_cols = df.select_dtypes(include=['object']).columns
-    num_cols = df.select_dtypes(exclude=['object']).columns
-    
-    print(f"Categorical columns: {len(cat_cols)}")
-    print(cat_cols)
-    print(f"Numerical columns: {len(num_cols)}")
-    print(num_cols)
+# Grid Search Results
 
 
     
@@ -176,6 +174,21 @@ def grid_search_results(grid_search):
     return result
 
 
+
+# Plotting
+
+
+
+def plot_columns_against_target(columns, target, data):
+    for column in columns:
+        plt.figure(figsize=(10, 6))
+        sns.scatterplot(x=data[column], y=target)
+        plt.title(f'{column} vs Target')
+        plt.xlabel(column)
+        plt.ylabel('Target')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
 
 def plot_grid_search_results(grid_search):
     results = grid_search_results(grid_search)
@@ -253,6 +266,10 @@ def learning_curve_plot(model, X, y, train_sizes=np.linspace(0.1, 1.0, 10), cv=5
     plt.show()
 
 
+
+# Feature Selection
+
+
     
 def correlation_filter(X, y, threshold=0.8, log=False):
     corr = X.drop(columns=['Id']).corr().abs()
@@ -294,3 +311,18 @@ def rfe(X, y, n_features_to_select=10, log=False):
         print(f"Selected features: {selected_features}")
     
     return selected_features
+
+
+
+# Helpers
+
+
+
+def check_columns(df):
+    cat_cols = df.select_dtypes(include=['object']).columns
+    num_cols = df.select_dtypes(exclude=['object']).columns
+    
+    print(f"Categorical columns: {len(cat_cols)}")
+    print(cat_cols)
+    print(f"Numerical columns: {len(num_cols)}")
+    print(num_cols)
