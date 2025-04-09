@@ -65,39 +65,46 @@ class CleaningPreprocessor(BaseEstimator, TransformerMixin):
 
     
 class FeatureEngineeringPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self, one_hot_cats=None, target_cats=None, frequency_cats=None):
+    def __init__(self, one_hot_cats=[], target_cats=[], frequency_cats=[], ordinal_mapping={}):
         self.one_hot_cats = one_hot_cats
         self.target_cats = target_cats
         self.frequency_cats = frequency_cats
-    
+        self.ordinal_mapping = ordinal_mapping
+        
     def fit(self, X, y):
-        if self.target_cats is not None:
-            x_tmp = pd.concat([X, y], axis=1)
-            self.target_mean_map = {}
-            for col in self.target_cats:
-                self.target_mean_map[col] = x_tmp.groupby(col)[y.name].mean()
-        if self.frequency_cats is not None:
-            self.frequency_map = {}
-            for col in self.frequency_cats:
-                self.frequency_map[col] = X[col].value_counts(normalize=True)
+        x_tmp = pd.concat([X, y], axis=1)
+        self.target_mean_map = {}
+        for col in self.target_cats:
+            self.target_mean_map[col] = x_tmp.groupby(col)[y.name].mean()
+        self.frequency_map = {}
+        for col in self.frequency_cats:
+            self.frequency_map[col] = X[col].value_counts(normalize=True)
         return self
     
     def transform(self, X):
+        modified = set()
         X_transformed = X.copy()
         
         # One-hot encoding
-        if self.one_hot_cats is not None:
-            one_hot_encoded = X_transformed = pd.get_dummies(X_transformed, columns=self.one_hot_cats, drop_first=True)
+        one_hot_encoded = X_transformed = pd.get_dummies(X_transformed, columns=self.one_hot_cats, drop_first=True)
+        modified.update(self.one_hot_cats)
         # Target encoding
-        if self.target_cats is not None:
-            for col in self.target_cats:
+        for col in self.target_cats:
+            if col not in modified:
                 X_transformed[col] = X_transformed[col].map(self.target_mean_map[col])
-            X_transformed = X_transformed.fillna(0)
+                modified.add(col)
+        X_transformed = X_transformed.fillna(0)
         # Frequency encoding
-        if self.frequency_cats is not None:
-            for col in self.frequency_cats:
+        for col in self.frequency_cats:
+            if col not in modified:
                 X_transformed[col] = X_transformed[col].map(self.frequency_map[col])
-            X_transformed = X_transformed.fillna(0)
+                modified.add(col)
+        X_transformed = X_transformed.fillna(0)
+        # Ordinal encoding
+        for col in self.ordinal_mapping.keys():
+            if col not in modified:
+                X_transformed[col] = X_transformed[col].map(self.ordinal_mapping[col])
+                modified.add(col)
         # Label encoding
         encoder = LabelEncoder()
         for col in X_transformed.select_dtypes(include=['object']).columns:
@@ -126,14 +133,14 @@ class FeatureSelectionPreprocessor(BaseEstimator, TransformerMixin):
 
     
 class ExtensiveFeatureSelectionPreprocessor(BaseEstimator, TransformerMixin):
-    def __init__(self, threshold=0.8, n_features_to_select=10):
+    def __init__(self, threshold=0.8, n_features_to_select=30):
         self.threshold = threshold
         self.n_features_to_select = n_features_to_select
     
     def fit(self, X, y):
         X_transformed = X.copy()
         to_drop = correlation_filter(X_transformed, y, threshold=self.threshold)
-        a_X = X.drop(columns=to_drop)
+        a_X = X_transformed.drop(columns=to_drop)
         self.selected_features = rfe(a_X, y, n_features_to_select=self.n_features_to_select)
         return self
     
@@ -143,7 +150,7 @@ class ExtensiveFeatureSelectionPreprocessor(BaseEstimator, TransformerMixin):
 
 
 
-# Grid Search Results
+# Grid Search
 
 
     
@@ -190,7 +197,7 @@ def plot_columns_against_target(columns, target, data):
         plt.tight_layout()
         plt.show()
 
-def plot_grid_search_results(grid_search):
+def plot_grid_search_results(grid_search, save=False):
     results = grid_search_results(grid_search)
     
     # Plot RMSE for train and test
@@ -202,6 +209,8 @@ def plot_grid_search_results(grid_search):
     plt.title('Grid Search Results: RMSE')
     plt.legend()
     plt.grid(True)
+    if save:
+        plt.savefig(f"graphs/grid_search_rmse.png")
     plt.show()
     
     # Plot R2 for train and test
@@ -213,9 +222,11 @@ def plot_grid_search_results(grid_search):
     plt.title('Grid Search Results: R2')
     plt.legend()
     plt.grid(True)
+    if save:
+        plt.savefig(f"graphs/grid_search_r2.png")
     plt.show()
     
-def residual_plot(model, X, y):
+def residual_plot(model, X, y, save=False):
     y_pred = model.predict(X)
     residuals = y - y_pred
     
@@ -226,9 +237,11 @@ def residual_plot(model, X, y):
     plt.ylabel('Residuals')
     plt.title('Residual Plot')
     plt.grid(True)
+    if save:
+        plt.savefig(f"graphs/residuals.png")
     plt.show()
     
-def predicted_vs_actual_plot(model, X, y):
+def predicted_vs_actual_plot(model, X, y, save=False):
     y_pred = model.predict(X)
     
     plt.figure(figsize=(12, 6))
@@ -238,23 +251,22 @@ def predicted_vs_actual_plot(model, X, y):
     plt.ylabel('Predicted Values')
     plt.title('Predicted vs Actual Values')
     plt.grid(True)
+    if save:
+        plt.savefig(f"graphs/predicted_vs_actual.png")
     plt.show()
     
-def learning_curve_plot(model, X, y, train_sizes=np.linspace(0.1, 1.0, 10), cv=5):    
+def learning_curve_plot(model, X, y, train_sizes=np.linspace(0.1, 1.0, 10), cv=5, save=False):  
     train_sizes, train_scores, test_scores = learning_curve(model, X, y, train_sizes=train_sizes, cv=cv)
     
-    # Calculate the mean and standard deviation of the training and testing scores
     train_mean = np.mean(train_scores, axis=1)
     train_std = np.std(train_scores, axis=1)
     test_mean = np.mean(test_scores, axis=1)
     test_std = np.std(test_scores, axis=1)
     
-    # Plot the learning curve
     plt.figure(figsize=(12, 6))
     plt.plot(train_sizes, train_mean, label='Training Score', marker='o')
     plt.plot(train_sizes, test_mean, label='Cross-Validation Score', marker='o')
     
-    # Plot the fill between the standard deviation
     plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.1)
     plt.fill_between(train_sizes, test_mean - test_std, test_mean + test_std, alpha=0.1)
     
@@ -263,13 +275,24 @@ def learning_curve_plot(model, X, y, train_sizes=np.linspace(0.1, 1.0, 10), cv=5
     plt.title('Learning Curve')
     plt.legend()
     plt.grid(True)
+    if save:
+        plt.savefig(f"graphs/learning_curve.png")
     plt.show()
 
 
 
-# Feature Selection
+# Feature Selection + Engineering
 
 
+
+def get_low_cardinality_categorical_columns(X, threshold):
+    categorical_columns = X.select_dtypes(include=['object', 'category']).columns
+    
+    low_cardinality_columns = [
+        col for col in categorical_columns if X[col].nunique() < threshold
+    ]
+    
+    return low_cardinality_columns
     
 def correlation_filter(X, y, threshold=0.8, log=False):
     corr = X.drop(columns=['Id']).corr().abs()
